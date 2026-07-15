@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Medidor Acústico SGS</title>
+<meta name="theme-color" content="#0b3e65">
+<meta name="description" content="Medidor acústico orientativo con registro, gráfica y exportación">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--blue:#1261a0;--ink:#173042;--muted:#607482;--bg:#f2f6f8;--card:#fff;--red:#b42318;--ok:#087443}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink)}header{background:#0b3e65;color:white;padding:22px max(18px,calc((100% - 1150px)/2))}h1{margin:0;font-size:24px}header p{margin:5px 0 0;opacity:.85}.wrap{max-width:1150px;margin:22px auto;padding:0 18px}.grid{display:grid;grid-template-columns:350px 1fr;gap:18px}.card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 1px 5px #16304218}.card h2{font-size:17px;margin:0 0 13px}label{font-weight:650;display:block;margin:11px 0 5px}input,textarea{width:100%;padding:9px;border:1px solid #b9c7cf;border-radius:7px;font:inherit}textarea{resize:vertical}button{border:0;border-radius:7px;padding:10px 13px;font:600 14px inherit;background:var(--blue);color:#fff;cursor:pointer;margin:8px 5px 0 0}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:var(--red)}.secondary{background:#526b7a}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0}.stat{background:#eef5f8;border-radius:8px;padding:10px}.stat span{font-size:20px;font-weight:750;display:block}.stat small{color:var(--muted)}#status{margin:12px 0;padding:10px;background:#edf3f6;border-radius:7px}.note{font-size:12px;color:#536975;line-height:1.4}.warning{background:#fff3df;padding:10px;border-left:4px solid #d97706;border-radius:4px}.actions{margin-top:8px}.hidden{display:none}@media(max-width:800px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+</style></head>
+<body><header><h1>Medidor Acústico SGS</h1><p>dB(A) estimados · 1 muestra por segundo · modo orientativo y calibración local</p></header>
+<main class="wrap"><div class="grid"><section class="card"><h2>Ficha de medición</h2><label for="source">Fuente *</label><input id="source" placeholder="Ej.: extractor de aire"><label for="name">Nombre *</label><input id="name" placeholder="Ej.: Medición M-01"><label for="installation">Instalación *</label><input id="installation" placeholder="Ej.: Planta Norte"><label for="notes">Observaciones</label><textarea id="notes" rows="3" placeholder="Condiciones, ubicación, incidencias..."></textarea><hr><h2>Calibración</h2><p id="calInfo" class="note"></p><label for="reference">Referencia dB(A)</label><input id="reference" type="number" step="0.1" value="94.0"><button id="calibrate">Calibrar durante 10 s</button><button id="clearCal" class="secondary">Borrar</button><p class="note">Use preferiblemente un calibrador acústico de 94 dB a 1 kHz. Mantenga el dispositivo y la configuración sin cambios.</p></section>
+<section class="card"><h2>Medición</h2><div class="warning">Resultado orientativo: se integra la energía de audio de forma continua durante cada segundo, para reflejar ruidos breves. Sin calibración se aplica +95 dB; no sustituye un sonómetro homologado.</div><div id="status">Preparado. Complete la ficha y pulse «Iniciar».</div><div class="stats"><div class="stat"><span id="now">--</span><small>dB(A) actual</small></div><div class="stat"><span id="leq">--</span><small>LAeq,T aprox.</small></div><div class="stat"><span id="min">--</span><small>Lmín</small></div><div class="stat"><span id="max">--</span><small>Lmáx</small></div></div><canvas id="chart" height="110"></canvas><div class="actions"><button id="start">Iniciar</button><button id="stop" class="danger" disabled>Detener</button><button id="png" class="secondary" disabled>Exportar JPG + ficha</button><button id="excel" class="secondary" disabled>Exportar Excel</button><button id="audio" class="secondary" disabled>Descargar audio</button></div><audio id="player" controls class="hidden" style="width:100%;margin-top:14px"></audio></section></div></main>
+<script>
+const $=id=>document.getElementById(id);let ctx,stream,source,analyser,buf,timeBuf,recorder,chunks=[],tick=null,frameId=null,startedAt,rows=[],audioBlob=null,calTimer=null,isMeasuring=false;
+let intervalEnergy=0, intervalSamples=0, intervalPeak=0;
+const DEFAULT_OFFSET = 95; // Estimación inicial, sustituida por el offset de calibración si existe.
+let calibration=JSON.parse(localStorage.getItem('acousticCalibration')||'null');
+const chart=new Chart($('chart'),{type:'line',data:{labels:[],datasets:[{label:'dB(A) estimados',data:[],borderColor:'#1261a0',backgroundColor:'#1261a020',borderWidth:2,pointRadius:1,tension:.12,fill:true}]},options:{animation:false,scales:{x:{title:{display:true,text:'Tiempo (mm:ss)'}},y:{title:{display:true,text:'dB(A) estimados'},suggestedMin:30,suggestedMax:100}},plugins:{legend:{display:true}}}});
+function calInfo(){ $('calInfo').textContent=calibration?`Activa: offset ${calibration.offset.toFixed(2)} dB, creada el ${new Date(calibration.date).toLocaleString()}.`:`Sin calibración: se aplicará un offset genérico de +${DEFAULT_OFFSET} dB para mostrar dB(A) estimados.`}calInfo();
+function aWeightDb(f){if(f<=0)return -120;const f2=f*f;const r=(12194**2*f2*f2)/((f2+20.6**2)*Math.sqrt((f2+107.7**2)*(f2+737.9**2))*(f2+12194**2));return 20*Math.log10(r)+2.0}
+function instantDbfs(){
+  analyser.getFloatTimeDomainData(timeBuf);
+  let sum=0, peak=0;
+  for(const x of timeBuf){ sum+=x*x; peak=Math.max(peak,Math.abs(x)); }
+  return {energy:sum, count:timeBuf.length, peak};
+}
+function collectAudio(){
+  if(!isMeasuring || !analyser) return;
+  const x=instantDbfs();
+  intervalEnergy+=x.energy; intervalSamples+=x.count; intervalPeak=Math.max(intervalPeak,x.peak);
+  frameId=requestAnimationFrame(collectAudio);
+}
+function fmt(s){return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`}
+function updateStats(){const v=rows.map(r=>r.dBA_estimados);if(!v.length)return;const energy=10*Math.log10(v.reduce((a,x)=>a+10**(x/10),0)/v.length);$('now').textContent=v.at(-1).toFixed(1);$('leq').textContent=energy.toFixed(1);$('min').textContent=Math.min(...v).toFixed(1);$('max').textContent=Math.max(...v).toFixed(1)}
+function sample(){
+  if(!isMeasuring || !intervalSamples) return;
+  const elapsed=Math.floor((Date.now()-startedAt)/1000);
+  const rms=Math.sqrt(intervalEnergy/intervalSamples);
+  const raw=rms>0.000001?20*Math.log10(rms):-120;
+  const offset=calibration?calibration.offset:DEFAULT_OFFSET;
+  const dba=raw+offset;
+  const peakDb=intervalPeak>0.000001?20*Math.log10(intervalPeak)+offset:-120+offset;
+  rows.push({segundo:elapsed,hora:new Date().toLocaleTimeString(),nivelDigital_dBFS:Number(raw.toFixed(2)),offsetAplicado_dB:Number(offset.toFixed(2)),dBA_estimados:Number(dba.toFixed(2)),pico_dBA_estimado:Number(peakDb.toFixed(2)),modo:calibration?'Calibrado':'Estimado sin calibrar'});
+  chart.data.labels.push(fmt(elapsed));chart.data.datasets[0].data.push(dba);chart.update('none');updateStats();
+  intervalEnergy=0;intervalSamples=0;intervalPeak=0;
+}
+async function mic(){stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1},video:false});ctx=new AudioContext();await ctx.resume();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=4096;analyser.smoothingTimeConstant=0;buf=new Float32Array(analyser.frequencyBinCount);timeBuf=new Float32Array(analyser.fftSize);source.connect(analyser)}
+$('start').onclick=async()=>{if(!$('source').value||!$('name').value||!$('installation').value){$('status').textContent='Complete Fuente, Nombre e Instalación.';return}try{await mic();chunks=[];recorder=new MediaRecorder(stream);recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);recorder.onstop=()=>{audioBlob=new Blob(chunks,{type:recorder.mimeType});$('player').src=URL.createObjectURL(audioBlob);$('player').classList.remove('hidden');$('audio').disabled=false};recorder.start();rows=[];chart.data.labels=[];chart.data.datasets[0].data=[];chart.update();startedAt=Date.now();isMeasuring=true;intervalEnergy=0;intervalSamples=0;intervalPeak=0;collectAudio();tick=window.setInterval(sample,1000);$('start').disabled=true;$('stop').disabled=false;$('png').disabled=true;$('excel').disabled=true;$('status').textContent=calibration?'Midiendo y grabando audio (calibración local activa)...':'Midiendo y grabando audio (modo estimado sin calibrar; offset +95 dB)...'}catch(e){$('status').textContent=`No se pudo acceder al micrófono: ${e.name}. Abra desde HTTPS o localhost y conceda permiso.`}}
+$('stop').onclick=async()=>{isMeasuring=false;if(frameId!==null){cancelAnimationFrame(frameId);frameId=null}if(tick!==null){window.clearInterval(tick);tick=null}if(recorder&&recorder.state!=='inactive')recorder.stop();if(stream)stream.getTracks().forEach(t=>t.stop());if(ctx&&ctx.state!=='closed')await ctx.close();analyser=null;source=null;stream=null;ctx=null;$('start').disabled=false;$('stop').disabled=true;$('png').disabled=!rows.length;$('excel').disabled=!rows.length;$('status').textContent=`Finalizada: ${rows.length} muestras registradas.`}
+$('calibrate').onclick=async()=>{if(calTimer)return;try{await mic();$('calibrate').disabled=true;$('status').textContent='Calibrando durante 10 segundos...';let values=[];const t=setInterval(()=>{const x=instantDbfs();if(x.count)values.push(10*Math.log10(x.energy/x.count))},200);calTimer=setTimeout(()=>{clearInterval(t);const measured=10*Math.log10(values.reduce((a,x)=>a+10**(x/10),0)/values.length);const ref=Number($('reference').value);calibration={offset:ref-measured,date:new Date().toISOString(),reference:ref,measured};localStorage.setItem('acousticCalibration',JSON.stringify(calibration));stream.getTracks().forEach(x=>x.stop());ctx.close();calTimer=null;$('calibrate').disabled=false;calInfo();$('status').textContent=`Calibración guardada. Offset: ${calibration.offset.toFixed(2)} dB.`},10000)}catch(e){calTimer=null;$('calibrate').disabled=false;$('status').textContent=`Error de calibración: ${e.name}`}}
+$('clearCal').onclick=()=>{localStorage.removeItem('acousticCalibration');calibration=null;calInfo()};
+function safe(s){return String(s).replace(/[\\/:*?"<>|]/g,'_')}
+$('png').onclick=()=>{const canvas=document.createElement('canvas'),g=canvas.getContext('2d');canvas.width=1600;canvas.height=1200;g.fillStyle='#fff';g.fillRect(0,0,1600,1200);g.fillStyle='#0b3e65';g.fillRect(0,0,1600,115);g.fillStyle='#fff';g.font='bold 38px system-ui';g.fillText('Informe de medición acústica',60,70);g.fillStyle='#173042';g.font='bold 27px system-ui';g.fillText($('name').value,60,165);g.font='21px system-ui';const fields=[['Fuente',$('source').value],['Instalación',$('installation').value],['Inicio',new Date(startedAt).toLocaleString()],['Duración',fmt(rows.length?rows.at(-1).segundo:0)],['Modo',calibration?'Calibrado por dispositivo':'Estimado sin calibrar (+95 dB)'],['LAeq,T aprox.',$('leq').textContent+' dB(A)'],['Lmín / Lmáx',$('min').textContent+' / '+$('max').textContent+' dB(A)'],['Observaciones',$('notes').value||'—']];let y=210;for(const [k,v] of fields){g.font='bold 20px system-ui';g.fillStyle='#173042';g.fillText(k+':',60,y);g.font='20px system-ui';g.fillText(String(v).slice(0,95),290,y);y+=40}g.drawImage(chart.canvas,55,535,1490,500);g.fillStyle='#6b4a00';g.font='17px system-ui';g.fillText('Resultado orientativo; no válido como medición reglamentaria con sonómetro homologado.',60,1100);const a=document.createElement('a');a.href=canvas.toDataURL('image/jpeg',.92);a.download=`informe_${safe($('name').value)}.jpg`;a.click()};
+$('excel').onclick=()=>{const meta=[['Campo','Valor'],['Fuente',$('source').value],['Nombre',$('name').value],['Instalación',$('installation').value],['Observaciones',$('notes').value],['Fecha inicio',new Date(startedAt).toLocaleString()],['Muestras',rows.length],['Modo',calibration?'Calibrado por dispositivo':'Estimado sin calibrar'],['Offset aplicado',calibration?`${calibration.offset.toFixed(2)} dB; referencia ${calibration.reference} dB(A)`:`${DEFAULT_OFFSET} dB (valor genérico orientativo)`],['Aviso','Resultado orientativo; no reglamentario']];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(meta),'Ficha');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Datos 1 s');XLSX.writeFile(wb,`medicion_${safe($('name').value)}.xlsx`)};
+$('audio').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(audioBlob);a.download=`audio_${safe($('name').value)}.webm`;a.click()};
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
+}
+</script></body></html>
