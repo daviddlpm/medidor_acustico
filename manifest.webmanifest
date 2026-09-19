@@ -1,7 +1,7 @@
 {
   "name": "Medidor Acústico SGS",
   "short_name": "Acústico SGS",
-  "description": "Medidor Acústico SGS: medición orientativa, gráfica, grabación y exportación.",
+  "description": "Medidor Acústico SGS: medición orientativa, gráfica, grabación y exportación, con selección de micrófono.",
   "lang": "es",
   "start_url": "./index.html",
   "scope": "./",
@@ -9,7 +9,7 @@
   "background_color": "#f2f6f8",
   "theme_color": "#0b3e65",
   "icons": [
-    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"}
   ]
 }

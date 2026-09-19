@@ -1,66 +1,756 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Medidor Acústico SGS</title>
 <meta name="theme-color" content="#0b3e65">
-<meta name="description" content="Medidor acústico orientativo con registro, gráfica y exportación">
+<meta name="description" content="Medidor acústico orientativo con selección de micrófono, registro, gráfica y exportación">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="./vendor/chart.umd.min.js"></script>
+<script src="./vendor/xlsx.full.min.js"></script>
 <style>
-:root{--blue:#1261a0;--ink:#173042;--muted:#607482;--bg:#f2f6f8;--card:#fff;--red:#b42318;--ok:#087443}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink)}header{background:#0b3e65;color:white;padding:22px max(18px,calc((100% - 1150px)/2))}h1{margin:0;font-size:24px}header p{margin:5px 0 0;opacity:.85}.wrap{max-width:1150px;margin:22px auto;padding:0 18px}.grid{display:grid;grid-template-columns:350px 1fr;gap:18px}.card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 1px 5px #16304218}.card h2{font-size:17px;margin:0 0 13px}label{font-weight:650;display:block;margin:11px 0 5px}input,textarea{width:100%;padding:9px;border:1px solid #b9c7cf;border-radius:7px;font:inherit}textarea{resize:vertical}button{border:0;border-radius:7px;padding:10px 13px;font:600 14px inherit;background:var(--blue);color:#fff;cursor:pointer;margin:8px 5px 0 0}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:var(--red)}.secondary{background:#526b7a}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0}.stat{background:#eef5f8;border-radius:8px;padding:10px}.stat span{font-size:20px;font-weight:750;display:block}.stat small{color:var(--muted)}#status{margin:12px 0;padding:10px;background:#edf3f6;border-radius:7px}.note{font-size:12px;color:#536975;line-height:1.4}.warning{background:#fff3df;padding:10px;border-left:4px solid #d97706;border-radius:4px}.actions{margin-top:8px}.hidden{display:none}@media(max-width:800px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
-</style></head>
-<body><header><h1>Medidor Acústico SGS</h1><p>dB(A) estimados · 1 muestra por segundo · modo orientativo y calibración local</p></header>
-<main class="wrap"><div class="grid"><section class="card"><h2>Ficha de medición</h2><label for="source">Fuente *</label><input id="source" placeholder="Ej.: extractor de aire"><label for="name">Nombre *</label><input id="name" placeholder="Ej.: Medición M-01"><label for="installation">Instalación *</label><input id="installation" placeholder="Ej.: Planta Norte"><label for="notes">Observaciones</label><textarea id="notes" rows="3" placeholder="Condiciones, ubicación, incidencias..."></textarea><hr><h2>Calibración</h2><p id="calInfo" class="note"></p><label for="reference">Referencia dB(A)</label><input id="reference" type="number" step="0.1" value="94.0"><button id="calibrate">Calibrar durante 10 s</button><button id="clearCal" class="secondary">Borrar</button><p class="note">Use preferiblemente un calibrador acústico de 94 dB a 1 kHz. Mantenga el dispositivo y la configuración sin cambios.</p></section>
-<section class="card"><h2>Medición</h2><div class="warning">Resultado orientativo: se integra la energía de audio de forma continua durante cada segundo, para reflejar ruidos breves. Sin calibración se aplica +95 dB; no sustituye un sonómetro homologado.</div><div id="status">Preparado. Complete la ficha y pulse «Iniciar».</div><div class="stats"><div class="stat"><span id="now">--</span><small>dB(A) actual</small></div><div class="stat"><span id="leq">--</span><small>LAeq,T aprox.</small></div><div class="stat"><span id="min">--</span><small>Lmín</small></div><div class="stat"><span id="max">--</span><small>Lmáx</small></div></div><canvas id="chart" height="110"></canvas><div class="actions"><button id="start">Iniciar</button><button id="stop" class="danger" disabled>Detener</button><button id="png" class="secondary" disabled>Exportar JPG + ficha</button><button id="excel" class="secondary" disabled>Exportar Excel</button><button id="audio" class="secondary" disabled>Descargar audio</button></div><audio id="player" controls class="hidden" style="width:100%;margin-top:14px"></audio></section></div></main>
+:root{
+  --blue:#0b3e65;--blue2:#1261a0;--ink:#173042;--muted:#607482;--bg:#f2f6f8;--card:#fff;
+  --red:#b42318;--ok:#087443;--amber:#d97706;--line:#dbe4e9
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font:15px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
+header{background:linear-gradient(90deg,#0b3e65,#124d7d);color:#fff;padding:20px max(18px,calc((100% - 1180px)/2));display:flex;align-items:center;gap:14px}
+header img{width:42px;height:42px;border-radius:9px;flex:none}
+header h1{margin:0;font-size:23px;letter-spacing:.2px}
+header p{margin:3px 0 0;opacity:.85;font-size:13px}
+header .ver{margin-left:auto;font-size:12px;opacity:.75;text-align:right;white-space:nowrap}
+.wrap{max-width:1180px;margin:22px auto;padding:0 18px}
+.grid{display:grid;grid-template-columns:360px 1fr;gap:18px;align-items:start}
+.card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 1px 5px #16304218;margin-bottom:18px}
+.card:last-child{margin-bottom:0}
+.card h2{font-size:16px;margin:0 0 13px;color:var(--blue);display:flex;align-items:center;gap:8px}
+.card h2 .n{background:var(--blue2);color:#fff;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none}
+label{font-weight:650;display:block;margin:11px 0 5px;font-size:13.5px}
+input,textarea,select{width:100%;padding:9px;border:1px solid #b9c7cf;border-radius:7px;font:inherit;background:#fff;color:var(--ink)}
+textarea{resize:vertical}
+select:disabled,input:disabled{background:#f2f4f5;color:#8a9aa4}
+button{border:0;border-radius:7px;padding:10px 13px;font:600 14px inherit;background:var(--blue2);color:#fff;cursor:pointer;margin:8px 6px 0 0}
+button:disabled{opacity:.42;cursor:not-allowed}
+button.danger{background:var(--red)}
+button.secondary{background:#526b7a}
+button.ghost{background:#eef5f8;color:var(--blue2);border:1px solid #cfe0e8}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0}
+.stat{background:#eef5f8;border-radius:8px;padding:10px;text-align:center}
+.stat span{font-size:21px;font-weight:750;display:block}
+.stat small{color:var(--muted);font-size:11.5px}
+.stat.max span{color:var(--red)}
+.stat.min span{color:var(--ok)}
+#status{margin:12px 0;padding:10px;background:#edf3f6;border-radius:7px}
+.note{font-size:12px;color:#536975;line-height:1.45;margin:6px 0}
+.warning{background:#fff3df;padding:10px;border-left:4px solid var(--amber);border-radius:4px;font-size:13.5px;margin-bottom:12px}
+.error-box{background:#fdecea;padding:10px;border-left:4px solid var(--red);border-radius:4px;font-size:13.5px;margin-bottom:12px}
+.banner{background:#e7f3ff;border-left:4px solid var(--blue2);padding:9px 11px;border-radius:4px;font-size:13px;margin:8px 0;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.banner button{margin:0;padding:4px 9px;font-size:12px}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:6px;vertical-align:middle}
+.tag.ext{background:#e6f4ea;color:var(--ok)}
+.tag.int{background:#e7eef3;color:var(--blue2)}
+.chart-wrap{background:#fbfdfe;border:1px solid var(--line);border-radius:10px;padding:10px 6px 4px}
+canvas#chart{width:100%!important;height:340px!important}
+.actions{margin-top:8px}
+.hidden{display:none!important}
+.legend-mini{display:flex;gap:14px;flex-wrap:wrap;margin:8px 2px 0;font-size:12px;color:var(--muted)}
+.legend-mini span{display:inline-flex;align-items:center;gap:5px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+footer{max-width:1180px;margin:6px auto 30px;padding:0 18px;color:var(--muted);font-size:12px;line-height:1.5}
+@media(max-width:860px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}header .ver{display:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <img src="./icons/icon-192.png" alt="">
+  <div>
+    <h1>Medidor Acústico SGS</h1>
+    <p>dB(A) estimados · 1 muestra por segundo · selección de micrófono, calibración local y modo orientativo</p>
+  </div>
+  <div class="ver">v2.0<br>Uso orientativo</div>
+</header>
+
+<main class="wrap">
+  <div id="envError" class="error-box hidden"></div>
+  <div class="grid">
+
+    <div>
+      <section class="card">
+        <h2><span class="n">1</span>Micrófono</h2>
+        <label for="micSelect">Entrada de audio</label>
+        <select id="micSelect"></select>
+        <div class="row">
+          <button id="refreshMics" class="ghost" type="button">Detectar micrófonos</button>
+        </div>
+        <p id="micInfo" class="note">Comprobando micrófonos disponibles…</p>
+        <div id="micBanner" class="banner hidden">
+          <span id="micBannerText"></span>
+          <button id="micBannerUse" class="ghost" type="button">Usar este</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2><span class="n">2</span>Ficha de medición</h2>
+        <label for="source">Fuente *</label>
+        <input id="source" placeholder="Ej.: extractor de aire">
+        <label for="name">Nombre *</label>
+        <input id="name" placeholder="Ej.: Medición M-01">
+        <label for="installation">Instalación *</label>
+        <input id="installation" placeholder="Ej.: Planta Norte">
+        <label for="notes">Observaciones</label>
+        <textarea id="notes" rows="3" placeholder="Condiciones, ubicación, incidencias..."></textarea>
+      </section>
+
+      <section class="card">
+        <h2><span class="n">3</span>Calibración</h2>
+        <p id="calInfo" class="note"></p>
+        <label for="reference">Referencia dB(A)</label>
+        <input id="reference" type="number" step="0.1" value="94.0">
+        <div class="row">
+          <button id="calibrate" type="button">Calibrar durante 10 s</button>
+          <button id="clearCal" class="secondary" type="button">Borrar</button>
+        </div>
+        <p class="note">Use preferiblemente un calibrador acústico de 94 dB a 1 kHz, con el micrófono seleccionado arriba. La calibración se guarda por micrófono: si cambia de micrófono, deberá calibrar de nuevo.</p>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2><span class="n">4</span>Medición</h2>
+      <div class="warning">Resultado orientativo: se integra la energía de audio de forma continua durante cada segundo, para reflejar ruidos breves. Sin calibración del micrófono activo se aplica un offset genérico; no sustituye un sonómetro homologado.</div>
+      <div id="status">Preparado. Complete la ficha y pulse «Iniciar».</div>
+
+      <div class="stats">
+        <div class="stat"><span id="now">--</span><small>dB(A) actual</small></div>
+        <div class="stat"><span id="leq">--</span><small>LAeq,T aprox.</small></div>
+        <div class="stat min"><span id="min">--</span><small>Lmín</small></div>
+        <div class="stat max"><span id="max">--</span><small>Lmáx</small></div>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+      <div class="legend-mini">
+        <span><i class="dot" style="background:#1261a0"></i>Nivel dB(A)</span>
+        <span><i class="dot" style="background:#b42318"></i>Máximo de la medida</span>
+        <span><i class="dot" style="background:#087443"></i>Mínimo de la medida</span>
+      </div>
+
+      <div class="actions">
+        <button id="start" type="button">Iniciar</button>
+        <button id="stop" class="danger" disabled type="button">Detener</button>
+        <button id="png" class="secondary" disabled type="button">Exportar JPG + ficha</button>
+        <button id="excel" class="secondary" disabled type="button">Exportar Excel</button>
+        <button id="audio" class="secondary" disabled type="button">Descargar audio</button>
+      </div>
+      <audio id="player" controls class="hidden" style="width:100%;margin-top:14px"></audio>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  Medidor Acústico SGS · v2.0 · Herramienta de campo orientativa; no sustituye un sonómetro homologado ni una calibración de laboratorio.
+  Los datos de calibración y la selección de micrófono se guardan únicamente en este dispositivo/navegador.
+</footer>
+
 <script>
-const $=id=>document.getElementById(id);let ctx,stream,source,analyser,buf,timeBuf,recorder,chunks=[],tick=null,frameId=null,startedAt,rows=[],audioBlob=null,calTimer=null,isMeasuring=false;
-let intervalEnergy=0, intervalSamples=0, intervalPeak=0;
-const DEFAULT_OFFSET = 95; // Estimación inicial, sustituida por el offset de calibración si existe.
-let calibration=JSON.parse(localStorage.getItem('acousticCalibration')||'null');
-const chart=new Chart($('chart'),{type:'line',data:{labels:[],datasets:[{label:'dB(A) estimados',data:[],borderColor:'#1261a0',backgroundColor:'#1261a020',borderWidth:2,pointRadius:1,tension:.12,fill:true}]},options:{animation:false,scales:{x:{title:{display:true,text:'Tiempo (mm:ss)'}},y:{title:{display:true,text:'dB(A) estimados'},suggestedMin:30,suggestedMax:100}},plugins:{legend:{display:true}}}});
-function calInfo(){ $('calInfo').textContent=calibration?`Activa: offset ${calibration.offset.toFixed(2)} dB, creada el ${new Date(calibration.date).toLocaleString()}.`:`Sin calibración: se aplicará un offset genérico de +${DEFAULT_OFFSET} dB para mostrar dB(A) estimados.`}calInfo();
-function aWeightDb(f){if(f<=0)return -120;const f2=f*f;const r=(12194**2*f2*f2)/((f2+20.6**2)*Math.sqrt((f2+107.7**2)*(f2+737.9**2))*(f2+12194**2));return 20*Math.log10(r)+2.0}
-function instantDbfs(){
+'use strict';
+const $ = id => document.getElementById(id);
+function arrMinMax(arr) {
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < arr.length; i++) { if (arr[i] < mn) mn = arr[i]; if (arr[i] > mx) mx = arr[i]; }
+  return [mn, mx];
+}
+
+/* ---------------------------------------------------------------------
+   0. Comprobación de entorno
+--------------------------------------------------------------------- */
+const secureOk = window.isSecureContext === true;
+const mediaOk = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+const recorderOk = typeof MediaRecorder !== 'undefined';
+
+if (!secureOk || !mediaOk) {
+  $('envError').classList.remove('hidden');
+  $('envError').textContent = !secureOk
+    ? 'Esta página debe abrirse por HTTPS (o localhost) para poder usar el micrófono. Ábrala desde la URL publicada de GitHub Pages o instálela como aplicación.'
+    : 'Este navegador no permite acceder al micrófono desde la web. Pruebe con Chrome o Edge actualizados.';
+  $('start').disabled = true;
+  $('calibrate').disabled = true;
+}
+if (mediaOk && !recorderOk) {
+  const w = document.createElement('div');
+  w.className = 'warning';
+  w.textContent = 'Este navegador no admite grabación de audio (MediaRecorder). Podrá medir y exportar niveles, pero no descargar el audio.';
+  $('status').before(w);
+}
+
+/* ---------------------------------------------------------------------
+   1. Estado general
+--------------------------------------------------------------------- */
+let audioCtx, stream, sourceNode, analyser, timeBuf, recorder, chunks = [];
+let sampleTimer = null, frameId = null, startedAt = null, rows = [], audioBlob = null, calTimer = null;
+let appState = 'idle'; // idle | measuring | calibrating
+let intervalEnergy = 0, intervalSamples = 0, intervalPeak = 0;
+const DEFAULT_OFFSET = 95; // Estimación inicial si no hay calibración para el micrófono activo.
+
+let devices = [];              // dispositivos audioinput conocidos
+let selectedDeviceId = localStorage.getItem('acousticSelectedMic') || '';
+
+/* Calibraciones por micrófono: { [deviceId]: {offset,date,reference,measured,label} } */
+let calibrations = {};
+try { calibrations = JSON.parse(localStorage.getItem('acousticCalibrations') || '{}'); } catch (e) { calibrations = {}; }
+// Migración desde la versión anterior (una única calibración global, sin distinguir micrófono).
+const legacyRaw = localStorage.getItem('acousticCalibration');
+if (legacyRaw && !calibrations.__legacy__) {
+  try {
+    const legacy = JSON.parse(legacyRaw);
+    if (legacy && typeof legacy.offset === 'number') {
+      calibrations.__legacy__ = Object.assign({ legacy: true, label: 'Calibración de versión anterior' }, legacy);
+      localStorage.setItem('acousticCalibrations', JSON.stringify(calibrations));
+    }
+  } catch (e) { /* dato antiguo ilegible, se ignora */ }
+}
+
+function currentCalibration() {
+  if (selectedDeviceId && calibrations[selectedDeviceId]) return calibrations[selectedDeviceId];
+  if (calibrations.__legacy__) return calibrations.__legacy__;
+  return null;
+}
+
+/* ---------------------------------------------------------------------
+   2. Gestión de micrófonos (incluye USB-C externos)
+--------------------------------------------------------------------- */
+function classify(label) {
+  const l = (label || '').toLowerCase();
+  if (/usb|externo|external|type-c|usb-c|interfaz|audio device/.test(l)) return 'ext';
+  if (/built-in|integrad|interno|default|predeterminad/.test(l)) return 'int';
+  return '';
+}
+
+function renderMicSelect() {
+  const sel = $('micSelect');
+  const prev = selectedDeviceId;
+  sel.innerHTML = '';
+  if (!devices.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No se han detectado micrófonos';
+    sel.appendChild(opt);
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = appState !== 'idle';
+  devices.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = d.deviceId;
+    const kind = classify(d.label);
+    const suffix = kind === 'ext' ? ' (externo, USB-C/USB)' : kind === 'int' ? ' (integrado del teléfono)' : '';
+    opt.textContent = (d.label || `Micrófono ${i + 1}`) + suffix;
+    sel.appendChild(opt);
+  });
+  const stillThere = devices.some(d => d.deviceId === prev);
+  if (appState === 'idle') {
+    // Solo se reasigna el micrófono activo en reposo; en medición/calibración no se cambia bajo cuerda.
+    sel.value = stillThere ? prev : devices[0].deviceId;
+    selectedDeviceId = sel.value;
+    localStorage.setItem('acousticSelectedMic', selectedDeviceId);
+  } else if (stillThere) {
+    sel.value = prev;
+  }
+  updateMicInfo();
+  calInfo();
+}
+
+function updateMicInfo() {
+  const n = devices.length;
+  const extCount = devices.filter(d => classify(d.label) === 'ext').length;
+  if (!n) {
+    $('micInfo').textContent = 'No se detectan micrófonos. Conecte uno o revise los permisos del navegador.';
+    return;
+  }
+  const labelsKnown = devices.some(d => d.label);
+  let msg = `${n} entrada${n === 1 ? '' : 's'} de audio detectada${n === 1 ? '' : 's'}`;
+  if (extCount) msg += `, ${extCount} posible${extCount === 1 ? '' : 's'} externa${extCount === 1 ? '' : 's'} (USB-C/USB)`;
+  msg += '.';
+  if (!labelsKnown) msg += ' Pulse «Detectar micrófonos» para ver los nombres reales.';
+  $('micInfo').textContent = msg;
+}
+
+async function unlockLabelsIfNeeded() {
+  const needsUnlock = devices.some(d => !d.label);
+  if (!needsUnlock && devices.length) return;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach(t => t.stop());
+  } catch (e) { /* el usuario podrá conceder permiso al pulsar Iniciar/Calibrar */ }
+}
+
+async function refreshDevices(userInitiated) {
+  if (!mediaOk) return;
+  if (userInitiated) await unlockLabelsIfNeeded();
+  let list;
+  try {
+    list = await navigator.mediaDevices.enumerateDevices();
+  } catch (e) { return; }
+  const newAudioInputs = list.filter(d => d.kind === 'audioinput');
+  const previousIds = new Set(devices.map(d => d.deviceId));
+  const added = newAudioInputs.filter(d => d.deviceId && !previousIds.has(d.deviceId));
+  devices = newAudioInputs;
+  renderMicSelect();
+  if (!userInitiated && added.length && appState === 'idle') {
+    const d = added[0];
+    const kind = classify(d.label);
+    $('micBannerText').textContent = `Nuevo micrófono detectado${kind === 'ext' ? ' (posible entrada externa USB-C/USB)' : ''}: ${d.label || 'sin nombre'}.`;
+    $('micBanner').dataset.deviceId = d.deviceId;
+    $('micBanner').classList.remove('hidden');
+  }
+}
+
+$('refreshMics').onclick = () => refreshDevices(true);
+$('micSelect').onchange = e => {
+  selectedDeviceId = e.target.value;
+  localStorage.setItem('acousticSelectedMic', selectedDeviceId);
+  calInfo();
+};
+$('micBannerUse').onclick = () => {
+  const id = $('micBanner').dataset.deviceId;
+  if (id) {
+    selectedDeviceId = id;
+    $('micSelect').value = id;
+    localStorage.setItem('acousticSelectedMic', id);
+    calInfo();
+  }
+  $('micBanner').classList.add('hidden');
+};
+
+if (mediaOk && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
+}
+refreshDevices(false);
+
+/* ---------------------------------------------------------------------
+   3. Gráfica (Chart.js) con líneas de máximo/mínimo
+--------------------------------------------------------------------- */
+const minMaxLinesPlugin = {
+  id: 'minMaxLines',
+  afterDraw(chartInstance) {
+    const data = chartInstance.data.datasets[0] && chartInstance.data.datasets[0].data;
+    if (!data || data.length < 1) return;
+    const { ctx, chartArea, scales } = chartInstance;
+    const y = scales.y;
+    const [mn, mx] = arrMinMax(data);
+    const draw = (value, color, label, above) => {
+      const yp = y.getPixelForValue(value);
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.4;
+      ctx.moveTo(chartArea.left, yp);
+      ctx.lineTo(chartArea.right, yp);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const text = `${label} ${value.toFixed(1)} dB`;
+      ctx.font = 'bold 11.5px system-ui, sans-serif';
+      const tw = ctx.measureText(text).width;
+      const boxY = yp + (above ? -18 : 4);
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.fillRect(chartArea.right - tw - 12, boxY, tw + 8, 15);
+      ctx.fillStyle = color;
+      ctx.fillText(text, chartArea.right - tw - 8, boxY + 11);
+      ctx.restore();
+    };
+    draw(mx, '#b42318', 'Máx', true);
+    draw(mn, '#087443', 'Mín', false);
+  }
+};
+Chart.register(minMaxLinesPlugin);
+
+const chart = new Chart($('chart'), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'dB(A) estimados',
+      data: [],
+      borderColor: '#1261a0',
+      backgroundColor: '#1261a01a',
+      borderWidth: 2.2,
+      pointRadius: [],
+      pointBackgroundColor: [],
+      pointBorderWidth: 0,
+      tension: .15,
+      fill: true
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    interaction: { intersect: false, mode: 'index' },
+    scales: {
+      x: { title: { display: true, text: 'Tiempo (mm:ss)' }, grid: { color: '#e7edf1' } },
+      y: { title: { display: true, text: 'dB(A) estimados' }, suggestedMin: 30, suggestedMax: 100, grid: { color: '#e7edf1' } }
+    },
+    plugins: { legend: { display: false } }
+  }
+});
+
+function refreshChartStyling() {
+  const data = chart.data.datasets[0].data;
+  if (!data.length) return;
+  let maxI = 0, minI = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i] > data[maxI]) maxI = i;
+    if (data[i] < data[minI]) minI = i;
+  }
+  const radii = data.map(() => 1.2);
+  const colors = data.map(() => '#1261a0');
+  radii[maxI] = 6; colors[maxI] = '#b42318';
+  radii[minI] = 6; colors[minI] = '#087443';
+  chart.data.datasets[0].pointRadius = radii;
+  chart.data.datasets[0].pointBackgroundColor = colors;
+
+  const [mn, mx] = arrMinMax(data);
+  const pad = Math.max(4, (mx - mn) * 0.18);
+  chart.options.scales.y.min = Math.floor((mn - pad) / 5) * 5;
+  chart.options.scales.y.max = Math.ceil((mx + pad) / 5) * 5;
+}
+
+/* ---------------------------------------------------------------------
+   4. Cálculo de nivel a partir del audio
+--------------------------------------------------------------------- */
+function instantDbfs() {
   analyser.getFloatTimeDomainData(timeBuf);
-  let sum=0, peak=0;
-  for(const x of timeBuf){ sum+=x*x; peak=Math.max(peak,Math.abs(x)); }
-  return {energy:sum, count:timeBuf.length, peak};
+  let sum = 0, peak = 0;
+  for (const x of timeBuf) { sum += x * x; peak = Math.max(peak, Math.abs(x)); }
+  return { energy: sum, count: timeBuf.length, peak };
 }
-function collectAudio(){
-  if(!isMeasuring || !analyser) return;
-  const x=instantDbfs();
-  intervalEnergy+=x.energy; intervalSamples+=x.count; intervalPeak=Math.max(intervalPeak,x.peak);
-  frameId=requestAnimationFrame(collectAudio);
+
+function collectAudio() {
+  if (appState !== 'measuring' || !analyser) return;
+  const x = instantDbfs();
+  intervalEnergy += x.energy; intervalSamples += x.count; intervalPeak = Math.max(intervalPeak, x.peak);
+  frameId = requestAnimationFrame(collectAudio);
 }
-function fmt(s){return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`}
-function updateStats(){const v=rows.map(r=>r.dBA_estimados);if(!v.length)return;const energy=10*Math.log10(v.reduce((a,x)=>a+10**(x/10),0)/v.length);$('now').textContent=v.at(-1).toFixed(1);$('leq').textContent=energy.toFixed(1);$('min').textContent=Math.min(...v).toFixed(1);$('max').textContent=Math.max(...v).toFixed(1)}
-function sample(){
-  if(!isMeasuring || !intervalSamples) return;
-  const elapsed=Math.floor((Date.now()-startedAt)/1000);
-  const rms=Math.sqrt(intervalEnergy/intervalSamples);
-  const raw=rms>0.000001?20*Math.log10(rms):-120;
-  const offset=calibration?calibration.offset:DEFAULT_OFFSET;
-  const dba=raw+offset;
-  const peakDb=intervalPeak>0.000001?20*Math.log10(intervalPeak)+offset:-120+offset;
-  rows.push({segundo:elapsed,hora:new Date().toLocaleTimeString(),nivelDigital_dBFS:Number(raw.toFixed(2)),offsetAplicado_dB:Number(offset.toFixed(2)),dBA_estimados:Number(dba.toFixed(2)),pico_dBA_estimado:Number(peakDb.toFixed(2)),modo:calibration?'Calibrado':'Estimado sin calibrar'});
-  chart.data.labels.push(fmt(elapsed));chart.data.datasets[0].data.push(dba);chart.update('none');updateStats();
-  intervalEnergy=0;intervalSamples=0;intervalPeak=0;
+
+function fmt(s) { return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
+
+function updateStats() {
+  const v = rows.map(r => r.dBA_estimados);
+  if (!v.length) return;
+  const energy = 10 * Math.log10(v.reduce((a, x) => a + 10 ** (x / 10), 0) / v.length);
+  $('now').textContent = v.at(-1).toFixed(1);
+  $('leq').textContent = energy.toFixed(1);
+  const [vMin, vMax] = arrMinMax(v);
+  $('min').textContent = vMin.toFixed(1);
+  $('max').textContent = vMax.toFixed(1);
 }
-async function mic(){stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1},video:false});ctx=new AudioContext();await ctx.resume();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=4096;analyser.smoothingTimeConstant=0;buf=new Float32Array(analyser.frequencyBinCount);timeBuf=new Float32Array(analyser.fftSize);source.connect(analyser)}
-$('start').onclick=async()=>{if(!$('source').value||!$('name').value||!$('installation').value){$('status').textContent='Complete Fuente, Nombre e Instalación.';return}try{await mic();chunks=[];recorder=new MediaRecorder(stream);recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);recorder.onstop=()=>{audioBlob=new Blob(chunks,{type:recorder.mimeType});$('player').src=URL.createObjectURL(audioBlob);$('player').classList.remove('hidden');$('audio').disabled=false};recorder.start();rows=[];chart.data.labels=[];chart.data.datasets[0].data=[];chart.update();startedAt=Date.now();isMeasuring=true;intervalEnergy=0;intervalSamples=0;intervalPeak=0;collectAudio();tick=window.setInterval(sample,1000);$('start').disabled=true;$('stop').disabled=false;$('png').disabled=true;$('excel').disabled=true;$('status').textContent=calibration?'Midiendo y grabando audio (calibración local activa)...':'Midiendo y grabando audio (modo estimado sin calibrar; offset +95 dB)...'}catch(e){$('status').textContent=`No se pudo acceder al micrófono: ${e.name}. Abra desde HTTPS o localhost y conceda permiso.`}}
-$('stop').onclick=async()=>{isMeasuring=false;if(frameId!==null){cancelAnimationFrame(frameId);frameId=null}if(tick!==null){window.clearInterval(tick);tick=null}if(recorder&&recorder.state!=='inactive')recorder.stop();if(stream)stream.getTracks().forEach(t=>t.stop());if(ctx&&ctx.state!=='closed')await ctx.close();analyser=null;source=null;stream=null;ctx=null;$('start').disabled=false;$('stop').disabled=true;$('png').disabled=!rows.length;$('excel').disabled=!rows.length;$('status').textContent=`Finalizada: ${rows.length} muestras registradas.`}
-$('calibrate').onclick=async()=>{if(calTimer)return;try{await mic();$('calibrate').disabled=true;$('status').textContent='Calibrando durante 10 segundos...';let values=[];const t=setInterval(()=>{const x=instantDbfs();if(x.count)values.push(10*Math.log10(x.energy/x.count))},200);calTimer=setTimeout(()=>{clearInterval(t);const measured=10*Math.log10(values.reduce((a,x)=>a+10**(x/10),0)/values.length);const ref=Number($('reference').value);calibration={offset:ref-measured,date:new Date().toISOString(),reference:ref,measured};localStorage.setItem('acousticCalibration',JSON.stringify(calibration));stream.getTracks().forEach(x=>x.stop());ctx.close();calTimer=null;$('calibrate').disabled=false;calInfo();$('status').textContent=`Calibración guardada. Offset: ${calibration.offset.toFixed(2)} dB.`},10000)}catch(e){calTimer=null;$('calibrate').disabled=false;$('status').textContent=`Error de calibración: ${e.name}`}}
-$('clearCal').onclick=()=>{localStorage.removeItem('acousticCalibration');calibration=null;calInfo()};
-function safe(s){return String(s).replace(/[\\/:*?"<>|]/g,'_')}
-$('png').onclick=()=>{const canvas=document.createElement('canvas'),g=canvas.getContext('2d');canvas.width=1600;canvas.height=1200;g.fillStyle='#fff';g.fillRect(0,0,1600,1200);g.fillStyle='#0b3e65';g.fillRect(0,0,1600,115);g.fillStyle='#fff';g.font='bold 38px system-ui';g.fillText('Informe de medición acústica',60,70);g.fillStyle='#173042';g.font='bold 27px system-ui';g.fillText($('name').value,60,165);g.font='21px system-ui';const fields=[['Fuente',$('source').value],['Instalación',$('installation').value],['Inicio',new Date(startedAt).toLocaleString()],['Duración',fmt(rows.length?rows.at(-1).segundo:0)],['Modo',calibration?'Calibrado por dispositivo':'Estimado sin calibrar (+95 dB)'],['LAeq,T aprox.',$('leq').textContent+' dB(A)'],['Lmín / Lmáx',$('min').textContent+' / '+$('max').textContent+' dB(A)'],['Observaciones',$('notes').value||'—']];let y=210;for(const [k,v] of fields){g.font='bold 20px system-ui';g.fillStyle='#173042';g.fillText(k+':',60,y);g.font='20px system-ui';g.fillText(String(v).slice(0,95),290,y);y+=40}g.drawImage(chart.canvas,55,535,1490,500);g.fillStyle='#6b4a00';g.font='17px system-ui';g.fillText('Resultado orientativo; no válido como medición reglamentaria con sonómetro homologado.',60,1100);const a=document.createElement('a');a.href=canvas.toDataURL('image/jpeg',.92);a.download=`informe_${safe($('name').value)}.jpg`;a.click()};
-$('excel').onclick=()=>{const meta=[['Campo','Valor'],['Fuente',$('source').value],['Nombre',$('name').value],['Instalación',$('installation').value],['Observaciones',$('notes').value],['Fecha inicio',new Date(startedAt).toLocaleString()],['Muestras',rows.length],['Modo',calibration?'Calibrado por dispositivo':'Estimado sin calibrar'],['Offset aplicado',calibration?`${calibration.offset.toFixed(2)} dB; referencia ${calibration.reference} dB(A)`:`${DEFAULT_OFFSET} dB (valor genérico orientativo)`],['Aviso','Resultado orientativo; no reglamentario']];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(meta),'Ficha');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Datos 1 s');XLSX.writeFile(wb,`medicion_${safe($('name').value)}.xlsx`)};
-$('audio').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(audioBlob);a.download=`audio_${safe($('name').value)}.webm`;a.click()};
+
+function sample() {
+  if (appState !== 'measuring' || !intervalSamples) return;
+  const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+  const rms = Math.sqrt(intervalEnergy / intervalSamples);
+  const raw = rms > 0.000001 ? 20 * Math.log10(rms) : -120;
+  const cal = currentCalibration();
+  const offset = cal ? cal.offset : DEFAULT_OFFSET;
+  const dba = raw + offset;
+  const peakDb = intervalPeak > 0.000001 ? 20 * Math.log10(intervalPeak) + offset : -120 + offset;
+  const micLabel = (devices.find(d => d.deviceId === selectedDeviceId) || {}).label || 'Micrófono no identificado';
+
+  rows.push({
+    segundo: elapsed,
+    hora: new Date().toLocaleTimeString(),
+    nivelDigital_dBFS: Number(raw.toFixed(2)),
+    offsetAplicado_dB: Number(offset.toFixed(2)),
+    dBA_estimados: Number(dba.toFixed(2)),
+    pico_dBA_estimado: Number(peakDb.toFixed(2)),
+    microfono: micLabel,
+    tipoMicrofono: classify(micLabel) === 'ext' ? 'Externo (USB)' : classify(micLabel) === 'int' ? 'Integrado' : 'No identificado',
+    modo: cal ? (cal.legacy ? 'Calibrado (heredado)' : 'Calibrado') : 'Estimado sin calibrar'
+  });
+
+  chart.data.labels.push(fmt(elapsed));
+  chart.data.datasets[0].data.push(dba);
+  refreshChartStyling();
+  chart.update('none');
+  updateStats();
+
+  intervalEnergy = 0; intervalSamples = 0; intervalPeak = 0;
+}
+
+/* ---------------------------------------------------------------------
+   5. Captura de audio
+--------------------------------------------------------------------- */
+async function openMic(deviceId) {
+  const baseAudio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+  const constraints = { audio: Object.assign({}, baseAudio), video: false };
+  if (deviceId) constraints.audio.deviceId = { exact: deviceId };
+
+  let localStream;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (e) {
+    if (deviceId && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
+      // El micrófono seleccionado ya no está disponible (p. ej. se desconectó el USB-C): reintenta con el predeterminado.
+      await refreshDevices(false);
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: baseAudio, video: false });
+    } else {
+      throw e;
+    }
+  }
+  try {
+    stream = localStream;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    await audioCtx.resume();
+    sourceNode = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0;
+    timeBuf = new Float32Array(analyser.fftSize);
+    sourceNode.connect(analyser);
+  } catch (e) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    throw e;
+  }
+}
+
+function pickMimeType() {
+  if (!recorderOk) return undefined;
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  for (const c of candidates) {
+    if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) return c;
+  }
+  return undefined;
+}
+
+async function closeMic() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (audioCtx && audioCtx.state !== 'closed') { try { await audioCtx.close(); } catch (e) {} }
+  audioCtx = null; sourceNode = null; analyser = null;
+}
+
+/* ---------------------------------------------------------------------
+   6. Estados de la interfaz (evita condiciones de carrera)
+--------------------------------------------------------------------- */
+function setAppState(next) {
+  appState = next;
+  const busy = next !== 'idle';
+  $('start').disabled = busy;
+  $('calibrate').disabled = busy;
+  $('clearCal').disabled = busy;
+  $('micSelect').disabled = busy || !devices.length;
+  $('refreshMics').disabled = busy;
+  $('reference').disabled = busy;
+  $('stop').disabled = next !== 'measuring';
+}
+setAppState('idle');
+
+/* ---------------------------------------------------------------------
+   7. Acciones
+--------------------------------------------------------------------- */
+$('start').onclick = async () => {
+  if (!$('source').value || !$('name').value || !$('installation').value) {
+    $('status').textContent = 'Complete Fuente, Nombre e Instalación.';
+    return;
+  }
+  setAppState('measuring'); // bloquea inmediatamente los controles para evitar doble inicio
+  try {
+    await openMic(selectedDeviceId);
+    chunks = [];
+    audioBlob = null;
+    if (recorderOk) {
+      const mimeType = pickMimeType();
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+      recorder.onstop = () => {
+        audioBlob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        $('player').src = URL.createObjectURL(audioBlob);
+        $('player').classList.remove('hidden');
+        $('audio').disabled = false;
+      };
+      recorder.start();
+    }
+    rows = [];
+    chart.data.labels = [];
+    chart.data.datasets[0].data = [];
+    chart.data.datasets[0].pointRadius = [];
+    chart.data.datasets[0].pointBackgroundColor = [];
+    chart.options.scales.y.min = 30;
+    chart.options.scales.y.max = 100;
+    chart.update();
+    startedAt = Date.now();
+    intervalEnergy = 0; intervalSamples = 0; intervalPeak = 0;
+    collectAudio();
+    sampleTimer = window.setInterval(sample, 1000);
+    $('png').disabled = true;
+    $('excel').disabled = true;
+    const cal = currentCalibration();
+    const micLabel = (devices.find(d => d.deviceId === selectedDeviceId) || {}).label || 'micrófono predeterminado';
+    $('status').textContent = `Midiendo con "${micLabel}"${recorderOk ? ' y grabando audio' : ''} (${cal ? (cal.legacy ? 'calibración heredada' : 'calibración local activa') : 'modo estimado sin calibrar, offset +' + DEFAULT_OFFSET + ' dB'})...`;
+  } catch (e) {
+    setAppState('idle');
+    $('status').textContent = `No se pudo acceder al micrófono: ${e.name}. Compruebe permisos, que el micrófono siga conectado, y que la página se abra por HTTPS o localhost.`;
+  }
+};
+
+$('stop').onclick = async () => {
+  if (frameId !== null) { cancelAnimationFrame(frameId); frameId = null; }
+  if (sampleTimer !== null) { window.clearInterval(sampleTimer); sampleTimer = null; }
+  if (recorder && recorder.state !== 'inactive') recorder.stop();
+  await closeMic();
+  setAppState('idle');
+  $('png').disabled = !rows.length;
+  $('excel').disabled = !rows.length;
+  $('status').textContent = `Finalizada: ${rows.length} muestras registradas.`;
+};
+
+$('calibrate').onclick = async () => {
+  if (calTimer) return;
+  setAppState('calibrating');
+  try {
+    await openMic(selectedDeviceId);
+    $('status').textContent = 'Calibrando durante 10 segundos... no mueva el micrófono ni cambie el volumen del calibrador.';
+    const values = [];
+    const t = setInterval(() => {
+      const x = instantDbfs();
+      if (x.count) values.push(10 * Math.log10(x.energy / x.count));
+    }, 200);
+    calTimer = setTimeout(async () => {
+      clearInterval(t);
+      const measured = 10 * Math.log10(values.reduce((a, x) => a + 10 ** (x / 10), 0) / values.length);
+      const ref = Number($('reference').value);
+      const micLabel = (devices.find(d => d.deviceId === selectedDeviceId) || {}).label || 'Micrófono sin nombre';
+      const entry = { offset: ref - measured, date: new Date().toISOString(), reference: ref, measured, label: micLabel };
+      if (selectedDeviceId) {
+        calibrations[selectedDeviceId] = entry;
+      } else {
+        calibrations.__legacy__ = Object.assign({ legacy: true }, entry);
+      }
+      localStorage.setItem('acousticCalibrations', JSON.stringify(calibrations));
+      await closeMic();
+      calTimer = null;
+      setAppState('idle');
+      calInfo();
+      $('status').textContent = `Calibración guardada para "${micLabel}". Offset: ${entry.offset.toFixed(2)} dB.`;
+    }, 10000);
+  } catch (e) {
+    calTimer = null;
+    await closeMic();
+    setAppState('idle');
+    $('status').textContent = `Error de calibración: ${e.name}. Compruebe que el micrófono siga conectado.`;
+  }
+};
+
+$('clearCal').onclick = () => {
+  const cal = currentCalibration();
+  if (!cal) return;
+  if (!confirm('¿Borrar la calibración del micrófono seleccionado?')) return;
+  if (selectedDeviceId && calibrations[selectedDeviceId]) delete calibrations[selectedDeviceId];
+  else delete calibrations.__legacy__;
+  localStorage.setItem('acousticCalibrations', JSON.stringify(calibrations));
+  calInfo();
+};
+
+function calInfo() {
+  const cal = currentCalibration();
+  const micLabel = (devices.find(d => d.deviceId === selectedDeviceId) || {}).label || 'el micrófono seleccionado';
+  if (!cal) {
+    $('calInfo').textContent = `Sin calibración para ${micLabel}: se aplicará un offset genérico de +${DEFAULT_OFFSET} dB para mostrar dB(A) estimados.`;
+    $('calInfo').className = 'note';
+  } else if (cal.legacy) {
+    $('calInfo').textContent = `Usando calibración heredada de una versión anterior (offset ${cal.offset.toFixed(2)} dB, ${new Date(cal.date).toLocaleString()}). Se recomienda recalibrar "${micLabel}" para mayor precisión.`;
+    $('calInfo').className = 'note warning';
+  } else {
+    $('calInfo').textContent = `Activa para "${cal.label || micLabel}": offset ${cal.offset.toFixed(2)} dB, creada el ${new Date(cal.date).toLocaleString()}.`;
+    $('calInfo').className = 'note';
+  }
+}
+calInfo();
+
+function safe(s) { return String(s).replace(/[\\/:*?"<>|]/g, '_'); }
+
+$('png').onclick = () => {
+  const canvas = document.createElement('canvas'), g = canvas.getContext('2d');
+  canvas.width = 1600; canvas.height = 1300;
+  g.fillStyle = '#fff'; g.fillRect(0, 0, 1600, 1300);
+  g.fillStyle = '#0b3e65'; g.fillRect(0, 0, 1600, 115);
+  g.fillStyle = '#fff'; g.font = 'bold 38px system-ui'; g.fillText('Informe de medición acústica — SGS', 60, 70);
+  g.fillStyle = '#173042'; g.font = 'bold 27px system-ui'; g.fillText($('name').value, 60, 165);
+  g.font = '21px system-ui';
+  const cal = currentCalibration();
+  const micLabel = (devices.find(d => d.deviceId === selectedDeviceId) || {}).label || 'No identificado';
+  const fields = [
+    ['Fuente', $('source').value],
+    ['Instalación', $('installation').value],
+    ['Micrófono utilizado', micLabel + (classify(micLabel) === 'ext' ? ' (externo USB)' : classify(micLabel) === 'int' ? ' (integrado)' : '')],
+    ['Inicio', new Date(startedAt).toLocaleString()],
+    ['Duración', fmt(rows.length ? rows.at(-1).segundo : 0)],
+    ['Modo', cal ? (cal.legacy ? 'Calibrado (heredado, recalibrar recomendado)' : 'Calibrado por dispositivo') : `Estimado sin calibrar (+${DEFAULT_OFFSET} dB)`],
+    ['LAeq,T aprox.', $('leq').textContent + ' dB(A)'],
+    ['Lmín / Lmáx', $('min').textContent + ' / ' + $('max').textContent + ' dB(A)'],
+    ['Observaciones', $('notes').value || '—']
+  ];
+  let y = 210;
+  for (const [k, v] of fields) {
+    g.font = 'bold 20px system-ui'; g.fillStyle = '#173042'; g.fillText(k + ':', 60, y);
+    g.font = '20px system-ui'; g.fillText(String(v).slice(0, 95), 340, y);
+    y += 38;
+  }
+  g.drawImage(chart.canvas, 55, y + 15, 1490, 560);
+  g.fillStyle = '#6b4a00'; g.font = '17px system-ui';
+  g.fillText('Resultado orientativo; no válido como medición reglamentaria con sonómetro homologado.', 60, 1270);
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/jpeg', .92);
+  a.download = `informe_${safe($('name').value)}.jpg`;
+  a.click();
+};
+
+$('excel').onclick = () => {
+  const cal = currentCalibration();
+  const micLabel = (devices.find(d => d.deviceId === selectedDeviceId) || {}).label || 'No identificado';
+  const meta = [
+    ['Campo', 'Valor'],
+    ['Fuente', $('source').value],
+    ['Nombre', $('name').value],
+    ['Instalación', $('installation').value],
+    ['Observaciones', $('notes').value],
+    ['Micrófono utilizado', micLabel],
+    ['Tipo de micrófono', classify(micLabel) === 'ext' ? 'Externo (USB/USB-C)' : classify(micLabel) === 'int' ? 'Integrado del teléfono' : 'No identificado'],
+    ['Fecha inicio', new Date(startedAt).toLocaleString()],
+    ['Muestras', rows.length],
+    ['Lmín / Lmáx (dB(A))', $('min').textContent + ' / ' + $('max').textContent],
+    ['LAeq,T aprox. (dB(A))', $('leq').textContent],
+    ['Modo', cal ? (cal.legacy ? 'Calibrado (heredado)' : 'Calibrado por dispositivo') : 'Estimado sin calibrar'],
+    ['Offset aplicado', cal ? `${cal.offset.toFixed(2)} dB; referencia ${cal.reference} dB(A)` : `${DEFAULT_OFFSET} dB (valor genérico orientativo)`],
+    ['Aviso', 'Resultado orientativo; no reglamentario']
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(meta), 'Ficha');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Datos 1 s');
+  XLSX.writeFile(wb, `medicion_${safe($('name').value)}.xlsx`);
+};
+
+$('audio').onclick = () => {
+  if (!audioBlob) return;
+  const ext = (recorder && recorder.mimeType && recorder.mimeType.includes('mp4')) ? 'm4a' : 'webm';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(audioBlob);
+  a.download = `audio_${safe($('name').value)}.${ext}`;
+  a.click();
+};
 </script>
+
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
 }
-</script></body></html>
+</script>
+</body>
+</html>
